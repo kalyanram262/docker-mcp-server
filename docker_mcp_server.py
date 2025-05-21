@@ -130,17 +130,75 @@ async def stop_container(container_id: str, timeout: int = 10) -> Dict[str, Any]
         raise
 
 @mcp.tool()
-async def remove_container(container_id: str, force: bool = False) -> Dict[str, Any]:
+async def remove_container(container_id: str, force: bool = False):
     """Remove a container."""
     try:
         container = client.containers.get(container_id)
         container.remove(force=force)
-        return {
-            'id': container_id,
-            'success': True
-        }
+        return {'status': 'success', 'message': f'Container {container_id} removed'}
+    except docker.errors.NotFound:
+        raise ValueError(f'No such container: {container_id}')
     except Exception as e:
         logger.error(f"Error removing container {container_id}: {e}")
+        raise
+
+@mcp.tool()
+async def inspect_container(container_id: str) -> Dict[str, Any]:
+    """Get detailed information about a container.
+    
+    Args:
+        container_id: The ID or name of the container to inspect
+        
+    Returns:
+        Dict containing detailed container information
+    """
+    try:
+        container = client.containers.get(container_id)
+        return container.attrs
+    except docker.errors.NotFound:
+        raise ValueError(f'No such container: {container_id}')
+    except Exception as e:
+        logger.error(f"Error inspecting container {container_id}: {e}")
+        raise
+
+@mcp.tool()
+async def get_container_stats(container_id: str, stream: bool = False) -> Dict[str, Any]:
+    """Get real-time statistics for a container.
+    
+    Args:
+        container_id: The ID or name of the container
+        stream: If True, returns a generator that yields stats. If False, returns a single stats reading.
+               Default is False.
+               
+    Returns:
+        Dict containing container statistics including CPU, memory, network, and disk I/O
+    """
+    try:
+        container = client.containers.get(container_id)
+        
+        if stream:
+            def generate_stats():
+                try:
+                    for stats in container.stats(stream=True, decode=True):
+                        yield stats
+                except Exception as e:
+                    logger.error(f"Error in stats stream for container {container_id}: {e}")
+                    raise
+            
+            # Return the first stats immediately and keep streaming
+            first_stats = next(container.stats(stream=True, decode=True))
+            return {
+                'container_id': container_id,
+                'first_stats': first_stats,
+                'stream': generate_stats()
+            }
+        else:
+            return container.stats(stream=False, decode=True)
+            
+    except docker.errors.NotFound:
+        raise ValueError(f'No such container: {container_id}')
+    except Exception as e:
+        logger.error(f"Error getting stats for container {container_id}: {e}")
         raise
 
 # Image Operations

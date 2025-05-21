@@ -117,17 +117,26 @@ docker-mcp-server/
 
 - For connection issues, check Claude Desktop's logs for detailed error messages
 
-## Available Tools
+## 🛠️ Available Tools
 
+### Container Management
 - `list_containers(all_containers: bool = False)`: List all containers
 - `create_container(image: str, command: str = None, name: str = None, ports: dict = None, environment: dict = None, volumes: dict = None)`: Create a new container
 - `run_container(image: str, command: str = None, name: str = None, ports: dict = None, environment: dict = None, volumes: dict = None)`: Create and start a container
 - `start_container(container_id: str)`: Start a stopped container
 - `stop_container(container_id: str)`: Stop a running container
 - `remove_container(container_id: str, force: bool = False)`: Remove a container
+- `inspect_container(container_id: str)`: Get detailed information about a container
+- `get_container_stats(container_id: str, stream: bool = False)`: Get real-time container statistics (CPU, memory, network, disk I/O)
+
+### Image Management
 - `list_images()`: List all local images
 - `pull_image(image: str)`: Pull an image from a registry
+
+### Network Management
 - `list_networks()`: List all Docker networks
+
+### Volume Management
 - `list_volumes()`: List all Docker volumes
 
 The server will start on `http://0.0.0.0:8000`.
@@ -142,6 +151,8 @@ The server will start on `http://0.0.0.0:8000`.
 - `POST /start_container` - Start a stopped container
 - `POST /stop_container` - Stop a running container
 - `POST /remove_container` - Remove a container
+- `POST /inspect_container` - Get detailed container information
+- `POST /get_container_stats` - Get container statistics (CPU, memory, etc.)
 
 ### Images
 
@@ -156,28 +167,51 @@ The server will start on `http://0.0.0.0:8000`.
 
 - `POST /list_volumes` - List all Docker volumes
 
-## Example Usage
+## 🚀 Example Usage
 
-### List all running containers
+### Using Python Client
 
-```bash
-curl -X POST http://localhost:8000/list_containers
+```python
+# Get detailed container information
+container_info = await client.inspect_container("my-container")
+print(f"Container IP: {container_info['NetworkSettings']['IPAddress']}")
+
+# Get container statistics
+stats = await client.get_container_stats("my-container")
+print(f"CPU Usage: {stats['cpu_stats']['cpu_usage']['total_usage']}")
+
+# Stream container stats in real-time
+stats_stream = await client.get_container_stats("my-container", stream=True)
+print(f"Initial CPU: {stats_stream['first_stats']['cpu_stats']['cpu_usage']['total_usage']}")
+for stat in stats_stream['stream']:
+    print(f"CPU: {stat['cpu_stats']['cpu_usage']['total_usage']}")
+    # Process other metrics as needed
 ```
 
-### Pull an image
+### Using cURL
 
+#### Get container details
 ```bash
-curl -X POST http://localhost:8000/pull_image \
+curl -X POST http://localhost:8000/inspect_container \
   -H "Content-Type: application/json" \
-  -d '{"repository": "nginx", "tag": "latest"}'
+  -d '{"container_id": "my-container"}'
 ```
 
-### Run a container
-
+#### Get container statistics
 ```bash
-curl -X POST http://localhost:8000/run_container \
+# Single stats snapshot
+curl -X POST http://localhost:8000/get_container_stats \
   -H "Content-Type: application/json" \
-  -d '{"image": "nginx:latest", "detach": true}'
+  -d '{"container_id": "my-container"}'
+
+# Stream stats (using websockets or similar would be better for production)
+# This is a simplified example:
+while true; do
+  curl -s -X POST http://localhost:8000/get_container_stats \
+    -H "Content-Type: application/json" \
+    -d '{"container_id": "my-container"}' | jq '.cpu_stats.cpu_usage.total_usage'
+  sleep 1
+done
 ```
 
 ## Testing
