@@ -1,6 +1,6 @@
 # Docker MCP Server
 
-A Model Context Protocol (MCP) server for managing Docker containers, images, networks, and volumes on your local machine, with Claude Desktop integration.
+A Model Context Protocol (MCP) server for managing Docker containers, images, networks, and volumes on your local machine, with FastAPI HTTP interface.
 
 ## Features
 
@@ -8,15 +8,17 @@ A Model Context Protocol (MCP) server for managing Docker containers, images, ne
 - **Image Management**: List, pull, and remove Docker images
 - **Network Management**: List and manage Docker networks
 - **Volume Management**: List and manage Docker volumes
-- **Claude Desktop Integration**: Seamlessly connect with Claude Desktop for Docker management
+- **FastAPI HTTP Interface**: RESTful API endpoints for all operations
+- **Health Check**: Built-in health check endpoint for monitoring
 
 ## Prerequisites
 
-- Python 3.7+
-- Docker installed and running on your system
-- [Claude Desktop](https://claude.ai/download) (for desktop integration)
+- Docker and Docker Compose installed and running on your system
+- Port 8000 available for the FastAPI server
 
 ## 🚀 Installation
+
+## 🚀 Quick Start
 
 1. **Clone the repository**:
    ```bash
@@ -24,87 +26,123 @@ A Model Context Protocol (MCP) server for managing Docker containers, images, ne
    cd docker-mcp-server
    ```
 
-2. **Make the setup script executable**:
+2. **Start the services**:
    ```bash
-   chmod +x start_server.sh
+   docker-compose up -d
    ```
-
-3. **Run the setup script**:
-   ```bash
-   ./start_server.sh
-   ```
+   
    This will:
-   - Create a Python virtual environment
-   - Install all required dependencies
-   - Verify Docker is running
-   - Start the MCP server
-   - Show the configuration for Claude Desktop
+   - Build the Docker image
+   - Start the MCP server with FastAPI interface
+   - Mount the Docker socket for container management
+   - Start an example Nginx service on port 8080
+   - Expose port 8000 for the FastAPI server
 
-## 📁 Project Structure
+3. **Verify the services are running**:
+   ```bash
+   docker-compose ps
+   ```
+   
+   You should see both `docker-mcp-server` and `example-service` running.
 
-```
-docker-mcp-server/
-├── .gitignore          # Git ignore file
-├── LICENSE            # MIT License
-├── README.md          # This file
-├── docker_mcp_server.py # Main server code
-├── requirements.txt    # Python dependencies
-└── start_server.sh    # Setup and start script
-```
+4. **Check the health status**:
+   ```bash
+   curl http://localhost:8000/health
+   ```
+   
+   Should return: `{"status":"ok"}`
 
-## 🖥️ Running the Server
+### Option 2: Local Development
 
-### Option 1: Using the Setup Script (Recommended)
-```bash
-./start_server.sh
-```
+1. **Clone the repository**:
+   ```bash
+   git clone https://github.com/yourusername/docker-mcp-server.git
+   cd docker-mcp-server
+   ```
 
-### Option 2: Manual Setup
-1. Create and activate a virtual environment:
+2. **Create and activate a virtual environment**:
    ```bash
    python3 -m venv venv
    source venv/bin/activate  # On Windows: venv\Scripts\activate
    ```
 
-2. Install dependencies:
+3. **Install dependencies**:
    ```bash
    pip install -r requirements.txt
    ```
 
-3. Start the server:
+4. **Start the server**:
    ```bash
    python docker_mcp_server.py
    ```
 
-### Claude Desktop Integration
+### Building the Docker Image Manually
 
-1. Make sure the server is not already running
-2. Open Claude Desktop
-3. Go to Settings > MCP Servers
-4. Click "Add MCP Server"
-5. Import the following configuration (or import from `claude_desktop_config.json`):
+If you prefer to build the Docker image manually:
 
-```json
-{
-  "mcpServers": {
-    "docker-mcp": {
-      "command": "python3",
-      "args": [
-        "/path/to/your/docker-mcp-server/docker_mcp_server.py"
-      ],
-      "transport": {
-        "type": "stdio"
-      },
-      "env": {
-        "PYTHONUNBUFFERED": "1"
-      }
-    }
-  }
-}
+```bash
+docker build -t docker-mcp-server .
+
+docker run -d \
+  --name docker-mcp-server \
+  -p 8000:8000 \
+  -v /var/run/docker.sock:/var/run/docker.sock \
+  docker-mcp-server
 ```
 
-6. Save the configuration
-7. The Docker MCP server should now be available in Claude Desktop
+## 📁 Project Structure
+
+```
+docker-mcp-server/
+├── .dockerignore      # Docker ignore file
+├── .gitignore         # Git ignore file
+├── Dockerfile         # Docker configuration
+├── docker-compose.yml # Docker Compose configuration
+├── LICENSE            # MIT License
+├── README.md          # This file
+├── docker_mcp_server.py # Main server code
+└── requirements.txt   # Python dependencies
+```
+
+## 🛠️ Development
+
+### Running Tests
+```bash
+docker-compose exec docker-mcp-server python -m pytest
+```
+
+### Viewing Logs
+```bash
+docker-compose logs -f
+```
+
+### Stopping Services
+```bash
+docker-compose down
+```
+
+## 🔍 Example: Using the API
+
+### Starting an Nginx Container
+```bash
+curl -X POST http://localhost:8000/run_container \
+  -H "Content-Type: application/json" \
+  -d '{
+    "image": "nginx:alpine",
+    "ports": {"80/tcp": 8080},
+    "name": "my-nginx"
+  }'
+```
+
+### Listing Containers
+```bash
+curl -X POST http://localhost:8000/list_containers
+```
+
+### Viewing Container Logs
+```bash
+docker logs docker-mcp-server
+```
 
 ## Troubleshooting
 
@@ -116,6 +154,20 @@ docker-mcp-server/
   ```
 
 - For connection issues, check Claude Desktop's logs for detailed error messages
+
+## 📊 Monitoring
+
+The server includes a health check endpoint at `/health` that can be used for monitoring. The Docker Compose configuration includes a health check that verifies this endpoint.
+
+### Health Check Configuration
+```yaml
+healthcheck:
+  test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
+  interval: 10s
+  timeout: 5s
+  retries: 3
+  start_period: 10s
+```
 
 ## 🛠️ Available Tools
 
@@ -130,8 +182,11 @@ docker-mcp-server/
 - `get_container_stats(container_id: str, stream: bool = False)`: Get real-time container statistics (CPU, memory, network, disk I/O)
 
 ### Image Management
+- `build_image(path: str, tag: str = None, dockerfile: str = None, build_args: dict = None, labels: dict = None, pull: bool = False, no_cache: bool = False, rm: bool = True, timeout: int = 3600)`: Build a Docker image from a Dockerfile
 - `list_images()`: List all local images
-- `pull_image(image: str)`: Pull an image from a registry
+- `pull_image(repository: str, tag: str = "latest")`: Pull an image from a registry
+- `tag_image(image_reference: str, repository: str, tag: str = "latest")`: Tag a local image
+- `push_image(repository: str, tag: str = "latest", auth_config: dict = None)`: Push an image to a registry
 
 ### Network Management
 - `list_networks()`: List all Docker networks
@@ -156,8 +211,11 @@ The server will start on `http://0.0.0.0:8000`.
 
 ### Images
 
+- `POST /build_image` - Build an image from a Dockerfile
 - `POST /list_images` - List all local images
 - `POST /pull_image` - Pull an image from a registry
+- `POST /tag_image` - Tag a local image
+- `POST /push_image` - Push an image to a registry
 
 ### Networks
 
@@ -171,6 +229,7 @@ The server will start on `http://0.0.0.0:8000`.
 
 ### Using Python Client
 
+#### Container Operations
 ```python
 # Get detailed container information
 container_info = await client.inspect_container("my-container")
@@ -185,7 +244,34 @@ stats_stream = await client.get_container_stats("my-container", stream=True)
 print(f"Initial CPU: {stats_stream['first_stats']['cpu_stats']['cpu_usage']['total_usage']}")
 for stat in stats_stream['stream']:
     print(f"CPU: {stat['cpu_stats']['cpu_usage']['total_usage']}")
-    # Process other metrics as needed
+```
+
+#### Image Operations
+```python
+# Build an image
+build_result = await client.build_image(
+    path="./my-app",
+    tag="myapp:1.0",
+    dockerfile="Dockerfile.prod",
+    build_args={"NODE_ENV": "production"},
+    labels={"version": "1.0"}
+)
+print(f"Built image: {build_result['tags']}")
+
+# Tag an image
+tag_result = await client.tag_image(
+    image_reference="myapp:1.0",
+    repository="myregistry.example.com/team/myapp",
+    tag="production"
+)
+print(f"Tagged as: {tag_result['new_reference']}")
+
+# Push an image (using Docker's credential store)
+push_result = await client.push_image(
+    repository="myregistry.example.com/team/myapp",
+    tag="production"
+)
+print(f"Push logs: {push_result['logs']}")
 ```
 
 ### Using cURL
@@ -197,22 +283,104 @@ curl -X POST http://localhost:8000/inspect_container \
   -d '{"container_id": "my-container"}'
 ```
 
+#### Build and Push Images
+```bash
+# Build an image
+curl -X POST http://localhost:8000/build_image \
+  -H "Content-Type: application/json" \
+  -d '{
+    "path": "/path/to/your/app",
+    "tag": "myapp:1.0",
+    "dockerfile": "Dockerfile.prod",
+    "build_args": {"NODE_ENV": "production"}
+  }'
+
+# Tag an image
+curl -X POST http://localhost:8000/tag_image \
+  -H "Content-Type: application/json" \
+  -d '{
+    "image_reference": "myapp:1.0",
+    "repository": "myregistry.example.com/team/myapp",
+    "tag": "production"
+  }'
+
+# Push an image
+curl -X POST http://localhost:8000/push_image \
+  -H "Content-Type: application/json" \
+  -d '{
+    "repository": "myregistry.example.com/team/myapp",
+    "tag": "production"
+  }'
+```
+
 #### Get container statistics
 ```bash
 # Single stats snapshot
 curl -X POST http://localhost:8000/get_container_stats \
   -H "Content-Type: application/json" \
   -d '{"container_id": "my-container"}'
-
-# Stream stats (using websockets or similar would be better for production)
-# This is a simplified example:
-while true; do
-  curl -s -X POST http://localhost:8000/get_container_stats \
-    -H "Content-Type: application/json" \
-    -d '{"container_id": "my-container"}' | jq '.cpu_stats.cpu_usage.total_usage'
-  sleep 1
-done
 ```
+```
+
+## 🧪 Testing
+
+### Running Tests
+
+To run tests inside the container:
+
+```bash
+docker-compose exec docker-mcp-server python -m pytest
+```
+
+### Health Check
+
+The service includes a health check endpoint:
+
+```bash
+curl http://localhost:8000/health
+```
+
+### Monitoring
+
+You can view the container logs with:
+
+```bash
+docker-compose logs -f
+```
+
+## 🛠️ Development
+
+### Rebuilding the Container
+
+After making changes to the code or dependencies:
+
+```bash
+docker-compose up -d --build
+```
+
+### Accessing the Container Shell
+
+```bash
+docker-compose exec docker-mcp-server /bin/bash
+```
+
+## 🚀 Deployment
+
+### Production Considerations
+
+1. **Security**:
+   - Use TLS for MCP communication
+   - Implement proper authentication
+   - Limit Docker socket access
+   - Use secrets for sensitive data
+
+2. **Scaling**:
+   - The service is stateless and can be scaled horizontally
+   - Use a reverse proxy (like Nginx) for load balancing
+
+3. **Monitoring**:
+   - Set up logging and monitoring
+   - Configure alerts for the health check
 
 ## Testing
 
