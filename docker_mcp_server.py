@@ -234,80 +234,81 @@ async def get_container_stats(container_id: str, stream: bool = False) -> Dict[s
         raise
 
 # Image Operations
-@mcp.tool()
-async def build_image(
-    path: str,
-    tag: Optional[str] = None,
-    dockerfile: Optional[str] = None,
-    build_args: Optional[Dict[str, str]] = None,
-    labels: Optional[Dict[str, str]] = None,
-    pull: bool = False,
-    no_cache: bool = False,
-    rm: bool = True,
-    timeout: int = 3600
-) -> Dict[str, Any]:
-    """Build a Docker image from a Dockerfile.
-    
-    Args:
-        path: Path to the directory containing the Dockerfile
-        tag: Name and optionally a tag in 'name:tag' format
-        dockerfile: Path to the Dockerfile relative to the build path
-        build_args: Dictionary of build-time variables
-        labels: Dictionary of metadata for the image
-        pull: Pull the image even if an older image exists locally
-        no_cache: Do not use cache when building the image
-        rm: Remove intermediate containers after a successful build
-        timeout: Build timeout in seconds
-        
-    Returns:
-        Dict containing build status and image information
-    """
-    try:
-        logger.info(f"Building image from {path}")
-        
-        # Convert path to absolute if it's not already
-        abs_path = os.path.abspath(os.path.expanduser(path))
-        
-        # Build the image
-        image, logs = client.images.build(
-            path=abs_path,
-            tag=tag,
-            dockerfile=dockerfile,
-            buildargs=build_args,
-            labels=labels,
-            pull=pull,
-            nocache=no_cache,
-            rm=rm,
-            timeout=timeout
-        )
-        
-        # Process build logs
-        build_logs = []
-        for chunk in logs:
-            if 'stream' in chunk:
-                log = chunk['stream'].strip()
-                if log:
-                    build_logs.append(log)
-                    logger.info(f"Build log: {log}")
-        
-        return {
-            'status': 'success',
-            'message': f'Successfully built {tag or image.id}',
-            'image_id': image.id,
-            'tags': image.tags,
-            'short_id': image.short_id,
-            'logs': build_logs
-        }
-        
-    except docker.errors.BuildError as e:
-        error_msg = f"Build failed: {str(e)}"
-        logger.error(error_msg)
-        logger.error(f"Build logs: {e.build_log}")
-        raise ValueError(error_msg)
-    except Exception as e:
-        error_msg = f"Error building image: {str(e)}"
-        logger.error(error_msg)
-        raise ValueError(error_msg)
+# Commented out build_image function as it's not part of the current release
+# @mcp.tool()
+# async def build_image(
+#     path: str,
+#     tag: Optional[str] = None,
+#     dockerfile: Optional[str] = None,
+#     build_args: Optional[Dict[str, str]] = None,
+#     labels: Optional[Dict[str, str]] = None,
+#     pull: bool = False,
+#     no_cache: bool = False,
+#     rm: bool = True,
+#     timeout: int = 3600
+# ) -> Dict[str, Any]:
+#     """Build a Docker image from a Dockerfile.
+#     
+#     Args:
+#         path: Path to the directory containing the Dockerfile
+#         tag: Name and optionally a tag in 'name:tag' format
+#         dockerfile: Path to the Dockerfile relative to the build path
+#         build_args: Dictionary of build-time variables
+#         labels: Dictionary of metadata for the image
+#         pull: Pull the image even if an older image exists locally
+#         no_cache: Do not use cache when building the image
+#         rm: Remove intermediate containers after a successful build
+#         timeout: Build timeout in seconds
+#         
+#     Returns:
+#         Dict containing build status and image information
+#     """
+#     try:
+#         logger.info(f"Building image from {path}")
+#         
+#         # Convert path to absolute if it's not already
+#         abs_path = os.path.abspath(os.path.expanduser(path))
+#         
+#         # Build the image
+#         image, logs = client.images.build(
+#             path=abs_path,
+#             tag=tag,
+#             dockerfile=dockerfile,
+#             buildargs=build_args,
+#             labels=labels,
+#             pull=pull,
+#             nocache=no_cache,
+#             rm=rm,
+#             timeout=timeout
+#         )
+#         
+#         # Process build logs
+#         build_logs = []
+#         for chunk in logs:
+#             if 'stream' in chunk:
+#                 log = chunk['stream'].strip()
+#                 if log:
+#                     build_logs.append(log)
+#                     logger.info(f"Build log: {log}")
+#         
+#         return {
+#             'status': 'success',
+#             'message': f'Successfully built {tag or image.id}',
+#             'image_id': image.id,
+#             'tags': image.tags,
+#             'short_id': image.short_id,
+#             'logs': build_logs
+#         }
+#         
+#     except docker.errors.BuildError as e:
+#         error_msg = f"Build failed: {str(e)}"
+#         logger.error(error_msg)
+#         logger.error(f"Build logs: {e.build_log}")
+#         raise ValueError(error_msg)
+#     except Exception as e:
+#         error_msg = f"Error building image: {str(e)}"
+#         logger.error(error_msg)
+#         raise ValueError(error_msg)
 
 @mcp.tool()
 async def list_images() -> List[Dict[str, Any]]:

@@ -7,30 +7,18 @@ services:
       dockerfile: Dockerfile
     container_name: docker-mcp-server
     restart: unless-stopped
-    # Run as root for Docker socket access
+    # Run as root to ensure proper permissions for Docker socket
     user: "root"
     ports:
       - "8000:8000"
     volumes:
       - /var/run/docker.sock:/var/run/docker.sock
-      - ${PWD}:/app:delegated
-      # Add a volume for Docker CLI config
-      - docker-cli:/root/.docker
-    # Set proper permissions for the Docker socket
-    tmpfs:
-      - /tmp
-      - /run
-      - /run/lock
-    security_opt:
-      - no-new-privileges:true
+      - ${PWD}:/app
     environment:
       - PYTHONUNBUFFERED=1
       - DOCKER_HOST=unix:///var/run/docker.sock
       - MCP_SERVER_HOST=0.0.0.0
       - MCP_SERVER_PORT=8000
-      # Add buildkit for better build performance
-      - DOCKER_BUILDKIT=1
-      - COMPOSE_DOCKER_CLI_BUILD=1
     command: ["--host", "0.0.0.0", "--port", "8000", "--transport", "http", "--timeout", "60"]
     logging:
       driver: "json-file"
@@ -39,16 +27,10 @@ services:
         max-file: "3"
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
-      interval: 5s
+      interval: 30s
       timeout: 10s
       retries: 3
-      start_period: 10s
-    # Resource limits
-    deploy:
-      resources:
-        limits:
-          cpus: '1'
-          memory: 1G
+      start_period: 5s
 
   # Example of using the MCP server with another service
   example-service:
