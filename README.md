@@ -18,7 +18,7 @@ A Model Context Protocol (MCP) server for managing Docker containers, images, ne
 
 ## 🚀 Installation
 
-## 🚀 Quick Start
+## 🚀 Quick Start with Docker Compose
 
 1. **Clone the repository**:
    ```bash
@@ -100,9 +100,96 @@ docker-mcp-server/
 ├── docker-compose.yml # Docker Compose configuration
 ├── LICENSE            # MIT License
 ├── README.md          # This file
+├── chart/             # Helm chart for Kubernetes deployment
+│   └── docker-mcp-server/
+│       ├── Chart.yaml         # Chart metadata
+│       ├── values.yaml        # Default configuration values
+│       └── templates/         # Kubernetes templates
+│           ├── deployment.yaml
+│           ├── service.yaml
+│           ├── ingress.yaml
+│           └── serviceaccount.yaml
 ├── docker_mcp_server.py # Main server code
 └── requirements.txt   # Python dependencies
 ```
+
+## 🚀 Kubernetes Deployment with Helm
+
+### Prerequisites
+
+- Kubernetes cluster (Minikube, Docker Desktop, or cloud-based)
+- Helm 3.x installed
+- kubectl configured to communicate with your cluster
+
+### Installation
+
+1. **Add the chart repository** (if published):
+   ```bash
+   helm repo add docker-mcp-server https://your-chart-repo-url/
+   helm repo update
+   ```
+
+2. **Install the chart** (from local chart):
+   ```bash
+   # From the project root directory
+   helm install docker-mcp-server ./chart/docker-mcp-server -n docker-mcp --create-namespace
+   ```
+
+### Configuration
+
+The following table lists the configurable parameters of the Docker MCP Server chart and their default values.
+
+| Parameter | Description | Default |
+|-----------|-------------|---------|
+| `replicaCount` | Number of replicas | `1` |
+| `image.repository` | Docker image repository | `kalyanram262/mcp-test` |
+| `image.tag` | Docker image tag | `v3` |
+| `image.pullPolicy` | Image pull policy | `IfNotPresent` |
+| `service.type` | Kubernetes service type | `ClusterIP` |
+| `service.port` | Service port | `80` |
+| `ingress.enabled` | Enable ingress | `false` |
+| `ingress.hosts[0].host` | Ingress hostname | `docker-mcp.local` |
+| `resources.limits.cpu` | CPU limit | `500m` |
+| `resources.limits.memory` | Memory limit | `512Mi` |
+| `resources.requests.cpu` | CPU request | `100m` |
+| `resources.requests.memory` | Memory request | `128Mi` |
+
+### Upgrading
+
+To upgrade your installation with the latest chart:
+
+```bash
+# From the project root directory
+helm upgrade --install docker-mcp-server ./chart/docker-mcp-server -n docker-mcp
+```
+
+### Uninstalling
+
+To uninstall/delete the `docker-mcp-server` release:
+
+```bash
+helm uninstall docker-mcp-server -n docker-mcp
+kubectl delete namespace docker-mcp
+```
+
+### Accessing the Service
+
+#### Using Port-Forwarding
+
+```bash
+kubectl port-forward -n docker-mcp svc/docker-mcp-server 8080:80 &
+curl http://localhost:8080/health
+```
+
+#### Using Minikube Service
+
+```bash
+minikube service docker-mcp-server -n docker-mcp
+```
+
+#### Using Ingress (if enabled)
+1. Make sure your `ingress.hosts[0].host` (default: `docker-mcp.local`) resolves to your cluster's ingress IP
+2. Access the service at `http://docker-mcp.local/health`
 
 ## 🛠️ Development
 
