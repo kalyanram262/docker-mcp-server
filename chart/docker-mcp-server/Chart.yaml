@@ -1,0 +1,18 @@
+apiVersion: v2
+name: docker-mcp-server
+description: A Helm chart for Docker MCP Server
+
+type: application
+version: 0.1.1
+appVersion: "1.0.0"
+
+maintainers:
+  - name: kalyanram
+    email: kalyanram.adiraju@gmail.com
+
+
+keywords:
+  - docker
+  - mcp
+  - api
+  - server
