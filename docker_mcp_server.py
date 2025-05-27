@@ -7,9 +7,28 @@ import logging
 import sys
 import time
 from datetime import datetime as dt
-from typing import Any, Dict, List, Optional, Union
+from enum import Enum
+from typing import Any, Dict, List, Optional, Union, Literal
+from pydantic import BaseModel, Field
 from fastapi import FastAPI
 from mcp.server.fastmcp import FastMCP
+
+# Import Docker Scout module
+try:
+    from docker_scout import (
+        get_image_vulnerabilities,
+        get_image_recommendations,
+        get_summary_stats,
+        format_recommendations,
+        DockerScoutError,
+        is_docker_installed,
+        is_docker_running,
+        is_docker_scout_installed
+    )
+    DOCKER_SCOUT_AVAILABLE = is_docker_scout_installed()
+except ImportError as e:
+    logging.warning(f"Docker Scout tools not available: {e}")
+    DOCKER_SCOUT_AVAILABLE = False
 
 # Set up logging
 logging.basicConfig(level=logging.INFO)
@@ -49,6 +68,40 @@ async def health_check() -> dict:
             "error": str(e),
             "timestamp": dt.utcnow().isoformat()
         }
+
+# Docker Scout Models
+class VulnerabilitySeverity(str, Enum):
+    """Severity levels for vulnerabilities."""
+    CRITICAL = "critical"
+    HIGH = "high"
+    MEDIUM = "medium"
+    LOW = "low"
+    NEGLIGIBLE = "negligible"
+    UNKNOWN = "unknown"
+
+class Vulnerability(BaseModel):
+    """Model representing a security vulnerability."""
+    id: str = Field(..., description="Vulnerability ID (e.g., CVE-2023-1234)")
+    severity: VulnerabilitySeverity = Field(..., description="Severity level of the vulnerability")
+    title: str = Field(..., description="Title of the vulnerability")
+    description: Optional[str] = Field(None, description="Detailed description of the vulnerability")
+    package: str = Field(..., description="Name of the vulnerable package")
+    version: str = Field(..., description="Version of the vulnerable package")
+    fixed_version: Optional[str] = Field(None, description="Version that fixes the vulnerability")
+    cvss_score: Optional[float] = Field(None, description="CVSS score if available")
+    cve: Optional[str] = Field(None, description="CVE ID if available")
+    urls: List[str] = Field(default_factory=list, description="URLs with more information about the vulnerability")
+
+class ScanResult(BaseModel):
+    """Model representing the result of a Docker image scan."""
+    image: str = Field(..., description="Name of the scanned image")
+    digest: Optional[str] = Field(None, description="Image digest if available")
+    status: str = Field(..., description="Scan status (success/error)")
+    timestamp: str = Field(default_factory=lambda: dt.utcnow().isoformat(), description="Scan timestamp")
+    vulnerabilities: List[Vulnerability] = Field(default_factory=list, description="List of found vulnerabilities")
+    summary: Dict[str, int] = Field(default_factory=dict, description="Summary of vulnerabilities by severity")
+    recommendations: Optional[str] = Field(None, description="Recommended actions to fix vulnerabilities")
+    error: Optional[str] = Field(None, description="Error message if the scan failed")
 
 # Models (Pydantic models are not strictly needed with FastMCP but can be used for documentation)
 
@@ -232,6 +285,143 @@ async def get_container_stats(container_id: str, stream: bool = False) -> Dict[s
     except Exception as e:
         logger.error(f"Error getting stats for container {container_id}: {e}")
         raise
+
+# Docker Scout Operations
+@mcp.tool()
+async def scan_image(image_reference: str) -> Dict[str, Any]:
+    """
+    Scan a Docker image for vulnerabilities using Docker Scout.
+    
+    Args:
+        image_reference: The Docker image reference (name:tag or digest)
+        
+    Returns:
+        Dict containing scan results including vulnerabilities and recommendations
+    """
+    if not DOCKER_SCOUT_AVAILABLE:
+        return {
+            "status": "error",
+            "error": "Docker Scout is not available. Please ensure Docker is installed and Docker Scout is enabled.",
+            "image": image_reference,
+            "suggestion": "Install Docker Desktop or enable Docker Scout in your Docker CLI"
+        }
+    
+    logger.info(f"Starting vulnerability scan for image: {image_reference}")
+    result = {
+        "image": image_reference,
+        "status": "success",
+        "timestamp": dt.utcnow().isoformat(),
+        "vulnerabilities": [],
+        "summary": {
+            "critical": 0,
+            "high": 0,
+            "medium": 0,
+            "low": 0,
+            "negligible": 0,
+            "unknown": 0,
+            "total": 0
+        },
+        "recommendations": None,
+        "warnings": []
+    }
+    
+    try:
+        # Get vulnerabilities
+        logger.info(f"Fetching vulnerabilities for {image_reference}")
+        vuln_data = get_image_vulnerabilities(image_reference)
+        
+        # Check for errors in vulnerability data
+        if "error" in vuln_data:
+            result["status"] = "error"
+            result["error"] = vuln_data["error"]
+            return result
+        
+        # Process vulnerabilities
+        if isinstance(vuln_data, dict):
+            # Handle different response formats
+            if "vulnerabilities" in vuln_data and isinstance(vuln_data["vulnerabilities"], list):
+                for vuln in vuln_data["vulnerabilities"]:
+                    if not isinstance(vuln, dict):
+                        continue
+                    
+                    try:
+                        severity = vuln.get("severity", "unknown").lower()
+                        if severity not in result["summary"]:
+                            severity = "unknown"
+                        
+                        # Extract package information
+                        package_info = {}
+                        if isinstance(vuln.get("package"), dict):
+                            package_info = vuln["package"]
+                        
+                        # Extract CVSS score if available
+                        cvss_score = None
+                        if isinstance(vuln.get("cvss"), dict):
+                            cvss_score = vuln["cvss"].get("score")
+                        
+                        vulnerability = {
+                            "id": vuln.get("id") or vuln.get("name", ""),
+                            "severity": severity,
+                            "title": vuln.get("title") or vuln.get("name", "Vulnerability"),
+                            "description": vuln.get("description"),
+                            "package": package_info.get("name", ""),
+                            "version": package_info.get("version", ""),
+                            "fixed_version": vuln.get("fix_version") or vuln.get("fixed_version"),
+                            "cvss_score": cvss_score,
+                            "cve": vuln.get("cve") or vuln.get("id", ""),
+                            "urls": vuln.get("urls", [])
+                        }
+                        
+                        # Clean up None values
+                        vulnerability = {k: v for k, v in vulnerability.items() if v is not None}
+                        
+                        result["vulnerabilities"].append(vulnerability)
+                        result["summary"][severity] += 1
+                        result["summary"]["total"] += 1
+                        
+                    except Exception as e:
+                        logger.error(f"Error processing vulnerability: {e}")
+                        result["warnings"].append(f"Error processing a vulnerability: {str(e)}")
+            else:
+                result["warnings"].append("Unexpected vulnerability data format")
+        
+        # Get recommendations if we have a successful scan
+        if result["status"] == "success":
+            try:
+                logger.info(f"Fetching recommendations for {image_reference}")
+                rec_data = get_image_recommendations(image_reference)
+                
+                if isinstance(rec_data, dict) and "error" not in rec_data:
+                    result["recommendations"] = format_recommendations(rec_data)
+                else:
+                    result["warnings"].append("Could not get recommendations")
+                    if isinstance(rec_data, dict) and "error" in rec_data:
+                        logger.warning(f"Recommendation error: {rec_data['error']}")
+            except Exception as e:
+                logger.error(f"Error getting recommendations: {e}")
+                result["warnings"].append(f"Error getting recommendations: {str(e)}")
+        
+        logger.info(f"Scan completed for {image_reference}")
+        return result
+        
+    except DockerScoutError as e:
+        error_msg = f"Docker Scout error: {str(e)}"
+        logger.error(error_msg)
+        return {
+            "status": "error",
+            "error": error_msg,
+            "image": image_reference,
+            "suggestion": "Check if Docker Scout is properly installed and configured"
+        }
+    except Exception as e:
+        error_msg = f"Unexpected error scanning image: {str(e)}"
+        logger.error(error_msg, exc_info=True)
+        return {
+            "status": "error",
+            "error": error_msg,
+            "image": image_reference,
+            "suggestion": "Check the logs for more details"
+        }
 
 # Image Operations
 # Commented out build_image function as it's not part of the current release
